@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="nl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>JustAReminder — Remi AI toevoegen zonder code</title>
+<style>
+:root{font:16px/1.5 Inter,system-ui,sans-serif;background:#f5f7fc;color:#17213c}*{box-sizing:border-box}
+body{margin:0;padding:3rem 1rem}main{max-width:690px;margin:auto;padding:2.2rem;border-radius:20px;background:#fff;border:1px solid #e2e7f2;box-shadow:0 15px 45px #14285014}
+h1{margin:.2rem 0 1rem;font-size:1.65rem}p{color:#59667f}label{font-weight:750;display:block;margin:20px 0 8px}
+input{width:100%;border:2px dashed #b3bfda;border-radius:14px;padding:22px;background:#f8faff;cursor:pointer}button{border:0;background:#586be9;color:#fff;padding:13px 19px;border-radius:10px;font-weight:750;font-size:1rem;cursor:pointer;margin-top:12px}button:disabled{opacity:.45;cursor:not-allowed}
+#status{white-space:pre-line;background:#f2f5fd;border-radius:9px;padding:14px;margin-top:20px;font-size:.9rem}.note{border-left:4px solid #d8a357;padding-left:13px;color:#68583b}.ok{color:#126b48}
+</style></head><body><main><small>JUSTAREMINDER · ADMIN V4</small><h1>Remi AI toevoegen aan je bestaande dashboard</h1>
+<p>Deze tool neemt <strong>jouw volledige bestaande HTML</strong> over, voegt het echte AI-testcentrum toe en maakt één nieuw HTML-dashboard. Je hoeft geen enkele regel code te bewerken. Alles gebeurt lokaal in je browser.</p>
+<p class="note"><strong>Belangrijk:</strong> kies het originele ADMIN v4 HTML-bestand met <em>Betalingen & abonnementen</em>. Gebruik niet de oudere bestanden die je eerder van mij kreeg.</p>
+<label for="file">Kies je huidige ADMIN v4 HTML</label><input id="file" type="file" accept=".html,.htm,text/html"/>
+<button id="make" disabled>Maak mijn complete ADMIN met Remi AI</button>
+<div id="status" role="status">Er is nog geen bestand geselecteerd.</div>
+<p style="font-size:.83rem">De AI-test schrijft niets naar de database. Voor analyse gebruikt het resultaat wel jouw bestaande Edge Function <code>remi-interpret</code> en je ingelogde ADMIN-sessie.</p>
+</main><script type="text/plain" id="addon-source">(function(){
+"use strict";
+if(window.__jarRemiV4Injected)return;window.__jarRemiV4Injected=true;
+/**
+ * JUSTAREMINDER — Remi ADMIN AI Lab (ECHTE OpenAI-analyse)
+ * Geen simulaties, geen vaste testantwoorden, geen databasewrites.
+ * Vereist bestaande, ingelogde Supabase JS-client en gedeployde
+ * Supabase Edge Function 'remi-interpret' die server-side OpenAI aanroept.
+ *
+ * Import:
+ *   import { mountRemiAdminLab } from './remi-admin-lab.js';
+ *   mountRemiAdminLab(document.querySelector('#remi-admin-lab'), supabaseClient);
+ */
+const e = (tag, className = '', text = '') => {
+  const node = document.createElement(tag);
+  node.className = className;
+  node.textContent = text;
+  return node;
+};
+const ALLOWED_KINDS = new Set(['appointment', 'task', 'reminder']);
+const TYPE_NL = {appointment: 'Afspraak', task: 'Taak', reminder: 'Herinnering'};
+const style = `
+.remi-lab{font:inherit;color:inherit;max-width:850px;margin:0 auto;padding:16px 4px}
+.remi-lab *{box-sizing:border-box}
+.remi-lab .rl-panel{background:var(--remi-bg,#fff);color:var(--remi-fg,#1f2937);border:1px solid #ced3d9;border-radius:14px;padding:18px;margin:12px 0}
+.remi-lab .rl-top{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:space-between}
+.remi-lab .rl-badge{border:1px solid #bbb;border-radius:99px;padding:4px 10px;font-size:.8rem}
+.remi-lab .rl-description{color:#536071;font-size:.92rem;line-height:1.5}
+.remi-lab textarea,.remi-lab input:not([type=checkbox]),.remi-lab select{border:1px solid #aeb8c3;border-radius:8px;padding:10px;background:#fff;color:#111;max-width:100%;font:inherit}
+.remi-lab textarea{display:block;width:100%;min-height:120px;resize:vertical;margin:10px 0}
+.remi-lab .rl-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.remi-lab .rl-field{display:flex;flex-direction:column;gap:5px;font-size:.9rem}
+.remi-lab .rl-field input,.remi-lab .rl-field select{width:100%}
+.remi-lab .rl-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px}
+.remi-lab button{border:1px solid #5c6672;background:white;color:#132130;padding:10px 15px;border-radius:9px;cursor:pointer;font:inherit;font-weight:600}
+.remi-lab button.rl-primary{background:#225bd2;border-color:#225bd2;color:#fff}
+.remi-lab button:disabled{opacity:.5;cursor:not-allowed}
+.remi-lab .rl-alert{padding:9px 11px;border-radius:8px;background:#fff4db;color:#754900;margin:12px 0}
+.remi-lab .rl-error{padding:9px 11px;border-radius:8px;background:#fff0f0;color:#9b1b21;margin:12px 0}
+.remi-lab .rl-success{padding:9px 11px;border-radius:8px;background:#ecfdf3;color:#146c3a;margin:12px 0}
+.remi-lab .rl-proposal{border:1px solid #cfd5db;padding:13px;border-radius:12px;margin:13px 0}
+.remi-lab .rl-heading{display:flex;align-items:center;gap:8px;margin-bottom:11px}
+.remi-lab .rl-checkbox{display:inline-flex;align-items:center;gap:7px;margin:6px 0}
+.remi-lab .rl-summary{white-space:pre-line;margin-top:10px}
+.remi-lab h2,.remi-lab h3{margin:0 0 9px;font-weight:700;line-height:1.3}
+@media(max-width:640px){.remi-lab .rl-grid{grid-template-columns:1fr}.remi-lab .rl-panel{padding:12px}}
+`;
+
+function field(text, input) {
+  const label = e('label','rl-field');
+  label.append(e('span','',text), input);
+  return label;
+}
+function input(type, value, options={}) {
+  const node=e('input');
+  node.type=type;
+  if (value !== null && value !== undefined) node.value=String(value);
+  Object.assign(node, options);
+  return node;
+}
+function checkbox(label, checked=false) {
+  const holder=e('label','rl-checkbox');
+  const node=input('checkbox'); node.checked=checked;
+  holder.append(node,e('span','',label));
+  return {holder,node};
+}
+function errorText(error) {
+  if (!error) return 'Onbekende fout';
+  return error.message || String(error);
+}
+async function decodeInvokeError(error) {
+  const status=error?.context?.status;
+  let detail='';
+  try {
+    if (error?.context instanceof Response) {
+      const body = await error.context.clone().json();
+      if (body && typeof body.error==='string') detail=body.error.slice(0,250);
+    }
+  } catch { /* Geen JSON: toon algemene fout. */ }
+  if (status===401) return '401: Je bent niet correct ingelogd. Log opnieuw in bij JustAReminder en herlaad de ADMIN-pagina.';
+  if (status===403) return '403: Je account mag deze test niet uitvoeren.';
+  if (status===404) return '404: Edge Function remi-interpret niet gevonden. Controleer de deployment.';
+  if (status===429) return '429: Te veel aanvragen. Probeer later opnieuw.';
+  return (status?`HTTP ${status}: `:'') + (detail||errorText(error));
+}
+function validateItem(value) {
+  if (!value || !ALLOWED_KINDS.has(value.kind)) return false;
+  if (typeof value.title!=='string' || !value.title.trim()) return false;
+  if (value.date!==null && value.date!==undefined && !/^\d{4}-\d{2}-\d{2}$/.test(value.date)) return false;
+  if (value.time!==null && value.time!==undefined && !/^([01]\d|2[0-3]):[0-5]\d$/.test(value.time)) return false;
+  return true;
+}
+
+function mountRemiAdminLab(root, supabase) {
+  if (!(root instanceof HTMLElement)) throw new Error('ADMIN-container ontbreekt.');
+  if (!supabase?.auth?.getUser || !supabase?.functions?.invoke) throw new Error('Bestaande ingelogde Supabase-client ontbreekt.');
+  root.replaceChildren(); root.classList.add('remi-lab');
+  if (!document.getElementById('remi-admin-lab-style')) {
+    const tag=e('style'); tag.id='remi-admin-lab-style'; tag.textContent=style; document.head.append(tag);
+  }
+  const panel=e('section','rl-panel');
+  const top=e('div','rl-top');
+  top.append(e('h2','','🤖 Remi — ECHTE AI-test'),e('span','rl-badge','ADMIN · test · geen opslag'));
+  const intro=e('p','rl-description','De tekst wordt naar de bestaande Supabase Edge Function gestuurd. Alleen een echt OpenAI-resultaat wordt getoond. Er zijn GEEN voorbeeldresultaten of lokale herkenningsregels.');
+  const message=e('textarea'); message.maxLength=2000;
+  message.placeholder='Hey Remi, morgen om 4 uur heb ik Sanne als klant, om 6 uur Britt en om 8 uur eet ik bij mijn moeder.';
+  message.value='Hey Remi, morgen om 4 uur heb ik Sanne als klant, om 6 uur Britt en om 8 uur eet ik bij mijn moeder.';
+  const actions=e('div','rl-actions');
+  const analyze=e('button','rl-primary','Analyseer met échte OpenAI'); analyze.type='button';
+  const clear=e('button','','Wis resultaten'); clear.type='button';
+  actions.append(analyze,clear);
+  const status=e('div'); status.setAttribute('role','status'); status.setAttribute('aria-live','polite');
+  const results=e('section');
+  panel.append(top,intro,message,actions,status,results); root.append(panel);
+  const setStatus=(text,kind='')=>{status.className=kind;status.textContent=text;};
+  clear.addEventListener('click',()=>{results.replaceChildren();setStatus('Resultaten gewist. Er is niets opgeslagen.');});
+  analyze.addEventListener('click', async()=>{
+    const msg=message.value.trim();
+    results.replaceChildren();
+    if (!msg) return setStatus('Schrijf eerst een bericht.','rl-alert');
+    analyze.disabled=true; setStatus('Verbinding maken en AI-analyse uitvoeren...');
+    try {
+      const {data:auth,error:authError}=await supabase.auth.getUser();
+      if (authError||!auth?.user) throw new Error('Log in met je JustAReminder-account voordat je test.');
+      const timezone=Intl.DateTimeFormat().resolvedOptions().timeZone||'Europe/Amsterdam';
+      const {data,error}=await supabase.functions.invoke('remi-interpret',{body:{message:msg,timezone}});
+      if(error) throw new Error(await decodeInvokeError(error));
+      if(!data || data.ai!==true || data.provider!=='OpenAI' || data.saved!==false || !Array.isArray(data.items))
+        throw new Error('Geen verifieerbaar AI-testantwoord: verwacht ai:true, provider:OpenAI, saved:false en items[].');
+      if(!data.items.every(validateItem)) throw new Error('AI-resultaat bevat ongeldige voorstellen. Er is niets bevestigd.');
+      setStatus(`Echt AI-antwoord ontvangen · ${data.model||'model niet vermeld'} · ${data.items.length} voorstel(len) · 0 opgeslagen`,'rl-success');
+      renderReview(results,data,timezone);
+    } catch(err) {setStatus(`Analyse mislukt: ${errorText(err)}`,'rl-error');}
+    finally {analyze.disabled=false;}
+  });
+}
+
+function renderReview(section, data, timezone){
+  section.replaceChildren();
+  const intro=e('p','rl-summary',data.summary||''); section.append(intro);
+  if(!data.items.length){section.append(e('p','','De AI heeft geen voorstellen herkend.'));return;}
+  section.append(e('h3','','Controleer de AI-voorstellen'));
+  const rows=[];
+  for(const proposal of data.items){
+    const card=e('article','rl-proposal');
+    const head=e('div','rl-heading');
+    const include=checkbox('Dit voorstel opnemen',true); head.append(include.holder);
+    const grid=e('div','rl-grid');
+    const kind=e('select');
+    for(const [code,label] of Object.entries(TYPE_NL)){
+      const opt=e('option','',label); opt.value=code;kind.append(opt);
+    }
+    kind.value=proposal.kind;
+    const title=input('text',proposal.title,{maxLength:200});
+    const date=input('date',proposal.date||'');
+    const time=input('time',proposal.time||'');
+    const notification=input('number',proposal.notification_minutes_before??'',{min:'0',max:'10080',step:'1'});
+    grid.append(field('Soort',kind),field('Titel',title),field('Datum',date),field('Tijd',time),field('Melding: minuten vooraf (leeg = geen)',notification));
+    card.append(head,grid);
+    if(proposal.needs_clarification||proposal.clarification_question){
+      card.append(e('p','rl-alert','⚠️ '+(proposal.clarification_question||'Controleer de onduidelijke gegevens.')));
+    }
+    if(proposal.source_excerpt){card.append(e('p','rl-description',`Herkenning uit: “${proposal.source_excerpt}”`));}
+    const reviewed=checkbox('Ik heb dit voorstel gecontroleerd',false); card.append(reviewed.holder);
+    section.append(card);
+    rows.push({include:include.node,reviewed:reviewed.node,kind,title,date,time,notification});
+  }
+  const state=e('p');state.setAttribute('role','status');
+  const actions=e('div','rl-actions');
+  const confirm=e('button','rl-primary','Bevestig voor test (zonder opslaan)'); confirm.type='button';
+  const cancel=e('button','','Annuleren');cancel.type='button';
+  actions.append(confirm,cancel);section.append(actions,state);
+  cancel.addEventListener('click',()=>{section.replaceChildren();section.append(e('p','','Alle voorstellen geannuleerd. Niets opgeslagen.'));});
+  confirm.addEventListener('click',()=>{
+    state.className='';state.textContent='';
+    const selected=rows.filter(r=>r.include.checked);
+    if(!selected.length){state.className='rl-error';state.textContent='Selecteer minstens één voorstel.';return;}
+    const confirmed=[];
+    for(const row of selected){
+      if(!row.reviewed.checked){state.className='rl-error';state.textContent='Vink bij elk geselecteerd voorstel aan dat je het hebt gecontroleerd.';return;}
+      const item={kind:row.kind.value,title:row.title.value.trim(),date:row.date.value||null,time:row.time.value||null,
+        timezone,notification_minutes_before:row.notification.value===''?null:Number(row.notification.value)};
+      if(item.title.length<2){state.className='rl-error';state.textContent='Geef elk voorstel een duidelijke titel.';return;}
+      if(item.kind!=='task'&&(!item.date||!item.time)){state.className='rl-error';state.textContent='Vul voor elke afspraak/herinnering zowel datum als tijd in.';return;}
+      if(item.notification_minutes_before!==null&&(!Number.isInteger(item.notification_minutes_before)||item.notification_minutes_before<0||item.notification_minutes_before>10080)){
+        state.className='rl-error';state.textContent='Meldingstijd ongeldig.';return;
+      }
+      confirmed.push(item);
+    }
+    // Alleen lokale review. GEEN insert/upsert/update of andere database-aanroep.
+    section.replaceChildren();
+    section.append(e('p','rl-success',`✅ ${confirmed.length} voorstel(len) lokaal bevestigd. Niets in Supabase opgeslagen.`));
+    const details=e('ul');
+    for(const item of confirmed){details.append(e('li','',`${TYPE_NL[item.kind]}: ${item.title} — ${item.date||'geen datum'} ${item.time||'geen tijd'}`));}
+    section.append(details);
+  });
+}
+
+
+/* JustAReminder – NIET-DESTRUCTIEVE Remi AI-toevoeging.
+ * Past geen bestaande dashboardcode, data of betalingen aan.
+ * De server moet zelfstandig admin-autorisatie controleren.
+ */
+function jarRemiLaunchButton() {
+  if (document.getElementById('jar-remi-v4-launch')) return;
+  const side = document.querySelector('#side, aside.side, aside.sidebar, #sidebar, .sidebar');
+  if (!side) return;
+  const candidates = Array.from(side.querySelectorAll('button,a'));
+  const settings = candidates.find(x=>x.dataset.nav==='settings' || /^\s*[⚙⚙️]?\s*Instellingen\s*$/i.test(x.textContent.trim()) || /Instellingen/i.test(x.textContent));
+  const anchor = settings || side.querySelector('.side-bottom, .sidebar-footer');
+  const button = document.createElement('button');
+  button.type='button';
+  button.id='jar-remi-v4-launch';
+  button.className=settings?.className || 'nav';
+  button.textContent='✦  Remi AI Testcentrum';
+  button.setAttribute('aria-label','Open Remi AI Testcentrum');
+  button.style.cssText='display:block;width:100%;text-align:left;cursor:pointer;font-weight:700;min-height:43px;white-space:normal;';
+  if (!settings) { button.style.background='#273b63';button.style.color='#fff';button.style.border='0';button.style.borderRadius='10px';button.style.padding='12px'; }
+  if (anchor) anchor.parentElement.insertBefore(button,anchor);
+  else side.appendChild(button);
+  button.addEventListener('click', e=>{e.preventDefault();e.stopImmediatePropagation();jarRemiOpenOverlay();});
+}
+function jarRemiOpenOverlay() {
+  if (document.getElementById('jar-remi-v4-overlay')) return;
+  const backdrop=document.createElement('div');
+  backdrop.id='jar-remi-v4-overlay';
+  backdrop.style.cssText='position:fixed;inset:0;z-index:999999;background:rgba(14,25,48,.72);display:flex;align-items:center;justify-content:center;padding:12px;box-sizing:border-box;';
+  const panel=document.createElement('div');
+  panel.style.cssText='position:relative;box-sizing:border-box;background:#f7f9ff;color:#16233b;width:min(950px,100%);max-height:96vh;overflow-y:auto;border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,.28);padding:16px;';
+  const header=document.createElement('div');
+  header.style.cssText='display:flex;align-items:center;justify-content:space-between;gap:10px;padding:2px 6px 10px;';
+  const title=document.createElement('strong');title.textContent='Remi AI Testcentrum — ADMIN';title.style.cssText='font-size:16px';
+  const close=document.createElement('button');close.type='button';close.textContent='✕ Sluiten';close.style.cssText='padding:10px 12px;border-radius:8px;border:1px solid #ced6e6;background:#fff;color:#17243d;cursor:pointer';
+  const quit=()=>backdrop.remove();close.addEventListener('click',quit);backdrop.addEventListener('click',e=>{if(e.target===backdrop)quit()});
+  header.append(title,close);
+  const root=document.createElement('div');root.id='jar-remi-v4-root';
+  panel.append(header,root);backdrop.append(panel);document.body.append(backdrop);
+  jarRemiStart(root);
+}
+async function jarRemiStart(root){
+  function say(message) {root.replaceChildren();const p=document.createElement('p');p.style.cssText='padding:15px;background:white;border-radius:10px;border:1px solid #d3d9e5;white-space:pre-wrap';p.textContent=message;root.append(p);}
+  try {
+    if (!window.supabase?.createClient) throw Error('De Supabase-bibliotheek is niet geladen. Controleer het ADMIN-dashboard.');
+    const raw=localStorage.getItem('jar_admin_config_v1');
+    if (!raw) throw Error('De bestaande ADMIN-configuratie is niet gevonden (jar_admin_config_v1). Jouw v4 kan een andere configuratie gebruiken. Er is niets gewijzigd.');
+    const config=JSON.parse(raw);
+    if (!/^https:\/\/[\w-]+\.supabase\.co\/?$/i.test(config.url||'')) throw Error('Supabase project-URL ontbreekt in de ADMIN-configuratie.');
+    if (typeof config.key!=='string'||!config.key||/sb_secret_|service_role/i.test(config.key)) throw Error('Alleen een publieke Supabase-sleutel is toegestaan.');
+    const sb=window.supabase.createClient(config.url.replace(/\/$/,''),config.key,{auth:{persistSession:true,autoRefreshToken:true}});
+    const {data:auth,error:authError}=await sb.auth.getUser();
+    if(authError||!auth?.user) throw Error('Log eerst opnieuw in bij het ADMIN-dashboard.');
+    const {data:isAdmin,error:adminError}=await sb.rpc('jar_admin_is_admin');
+    if (adminError||isAdmin!==true) throw Error('ADMIN-toegang niet bevestigd. Geen AI-aanroep uitgevoerd.');
+    if(!document.getElementById('jar-remi-v4-overlay')) return;
+    mountRemiAdminLab(root,sb);
+  } catch(err) {say('Remi kon niet worden geopend: '+String(err?.message||err));}
+}
+function jarRemiBootstrap(){
+  jarRemiLaunchButton();
+  if (!document.getElementById('jar-remi-v4-launch')) {
+    // Bestaande ADMIN-shell kan pas na inloggen worden opgebouwd.
+    const observer=new MutationObserver(()=>{
+      jarRemiLaunchButton();
+      if(document.getElementById('jar-remi-v4-launch'))observer.disconnect();
+    });
+    observer.observe(document.body,{childList:true,subtree:true});
+    setTimeout(()=>observer.disconnect(),30000);
+  }
+}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',jarRemiBootstrap,{once:true});
+else jarRemiBootstrap();
+
+})();
+</script>
+<script>
+(()=>{'use strict';
+const file=document.querySelector('#file'),btn=document.querySelector('#make'),status=document.querySelector('#status');
+let text=null,filename=null;
+file.addEventListener('change',async()=>{
+  text=null;btn.disabled=true;
+  const f=file.files?.[0];if(!f){status.textContent='Geen bestand gekozen.';return;}
+  if(f.size>5*1024*1024){status.textContent='Het bestand is groter dan 5 MB. Er is niets gewijzigd.';return;}
+  const raw=await f.text();
+  if(!/<html\b/i.test(raw)||!/<\/body\s*>/i.test(raw)||!/JustAReminder/i.test(raw)){
+    status.textContent='Dit lijkt geen JustAReminder HTML-dashboard. Er is niets gewijzigd.';return;
+  }
+  if(!(/Betalingen\s*(?:&amp;|&|en)\s*abonnementen/i.test(raw)||/Betalingen in één oogopslag/i.test(raw)||/ADMIN PORTAL v4/i.test(raw))){
+    status.textContent='Let op: dit bestand bevat geen herkenbare ADMIN v4-betaalonderdelen. Kies de versie die je huidige betaaloverzicht bevat. Er is niets gewijzigd.';return;
+  }
+  if(raw.includes('JAR_REMI_AI_LAB_BEGIN')){status.textContent='Remi staat al in dit bestand. Er is niets gewijzigd.';return;}
+  if((raw.match(/<\/body\s*>/gi)||[]).length!==1){status.textContent='Afsluitende body-tag ontbreekt of is dubbel. Geen wijzigingen.';return;}
+  text=raw;filename=f.name;btn.disabled=false;
+  status.textContent='ADMIN v4 herkend, inclusief betaalonderdelen. Je kunt nu één nieuw dashboardbestand maken.';
+});
+btn.addEventListener('click',()=>{
+  if(!text)return;
+  const addon=document.getElementById('addon-source').textContent;
+  if(/<\/script/i.test(addon)){status.textContent='Onveilige scriptinhoud gevonden. Geen wijzigingen.';return;}
+  const insertion='\n<!-- JAR_REMI_AI_LAB_BEGIN -->\n<script>\n'+addon+'\n<'+'/script>\n<!-- JAR_REMI_AI_LAB_END -->\n';
+  const result=text.replace(/<\/body\s*>/i,insertion+'$&');
+  // Validatie: alle oorspronkelijke bytes blijven terugvindbaar na het verwijderen van de ene invoeging.
+  if(result.replace(insertion,'')!==text){status.textContent='Controle mislukt. Geen bestand aangemaakt.';return;}
+  const blob=new Blob([result],{type:'text/html;charset=utf-8'}),url=URL.createObjectURL(blob);
+  const a=document.createElement('a');a.href=url;a.download=filename.replace(/\.html?$/i,'')+'-MET-REMI-AI.html';a.click();
+  setTimeout(()=>URL.revokeObjectURL(url),10000);
+  status.textContent='Klaar: er is één complete HTML gemaakt. Je oorspronkelijke dashboardcode, inclusief betaaloverzicht, is intact gebleven. Gebruik de nieuwe HTML om je huidige ADMIN-bestand te vervangen. Maak eerst een backup van het live bestand.';
+});
+})();
+</script></body></html>
