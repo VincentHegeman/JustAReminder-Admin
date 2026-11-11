@@ -69,6 +69,8 @@ async function boot(){
  const cfg=storageConfig();if(!cfg?.url||!cfg?.key){configForm();return;}
  if(!/^https:\/\/[a-z0-9-]+\.supabase\.co\/?$/i.test(cfg.url)||/service_role|sb_secret_/i.test(cfg.key)){configForm("Bestaande verbinding is niet geldig.");return;}
  try{S.config=cfg;S.sb=window.supabase.createClient(cfg.url.replace(/\/$/,""),cfg.key,{auth:{persistSession:true,autoRefreshToken:true}});
+ S.sb.auth.onAuthStateChange((event)=>{if(event==="PASSWORD_RECOVERY"){S.recovering=true;recoveryForm();}});
+ if(window.location.hash.includes("type=recovery")){S.recovering=true;recoveryForm();return;}
  const {data,error}=await S.sb.auth.getUser();if(error||!data?.user){loginForm();return;}await authorize(data.user);}
  catch(e){loginForm(errText(e));}
 }
