@@ -35,9 +35,33 @@ function loginForm(note=""){
 setAuth((note?'<div class="auth-error">'+x(note)+'</div>':"")+
 '<form id="login-form"><div class="field"><label>E-mailadres</label><input name="email" autocomplete="username" type="email" required></div>'+
 '<div class="field"><label>Wachtwoord</label><input name="password" type="password" autocomplete="current-password" required></div>'+
-'<button class="primary" type="submit">Inloggen bij Admin</button></form>'+
-'<p class="hint">Alleen de beheerdersaccounts van JustAReminder krijgen toegang.</p>'+
-'<button type="button" class="outline" data-action="change-config">Verbinding aanpassen</button>');
+'<button class="primary" type="submit">Inloggen bij de planner</button></form>'+
+'<p class="hint">Nieuw bij de planner? Maak je account aan en bevestig de e-mail.</p>'+
+'<div class="actions"><button type="button" class="soft" data-action="show-signup">Nieuw account maken</button>'+
+'<button type="button" class="outline" data-action="show-forgot">Wachtwoord vergeten</button></div>'+
+'<div style="margin-top:16px"><button type="button" class="outline" data-action="change-config">Verbinding aanpassen</button></div>');
+}
+function signupForm(note=""){
+setAuth((note?'<div class="auth-error">'+x(note)+'</div>':"")+
+'<form id="signup-form"><div class="field"><label>E-mailadres</label><input name="email" autocomplete="email" type="email" required></div>'+
+'<div class="field"><label>Nieuw wachtwoord (minimaal 12 tekens)</label><input name="password" type="password" autocomplete="new-password" minlength="12" required></div>'+
+'<div class="field"><label>Herhaal wachtwoord</label><input name="confirm_password" type="password" autocomplete="new-password" minlength="12" required></div>'+
+'<button class="primary" type="submit">Account aanmaken</button></form>'+
+'<p class="hint">Je krijgt een bevestigingsmail. Alleen vooraf toegestane e-mailadressen kunnen de planner gebruiken.</p>'+
+'<button class="outline" type="button" data-action="show-login">← Terug naar inloggen</button>');
+}
+function forgotForm(note=""){
+setAuth((note?'<div class="auth-error">'+x(note)+'</div>':"")+
+'<form id="forgot-form"><div class="field"><label>E-mailadres</label><input name="email" type="email" autocomplete="email" required></div>'+
+'<button class="primary" type="submit">Stuur herstelmail</button></form>'+
+'<p class="hint">Je ontvangt een e-mail als het adres een account heeft. Je wachtwoord zelf wordt nooit gemaild.</p>'+
+'<button class="outline" type="button" data-action="show-login">← Terug naar inloggen</button>');
+}
+function recoveryForm(note=""){
+setAuth((note?'<div class="auth-error">'+x(note)+'</div>':"")+
+'<form id="recovery-form"><div class="field"><label>Nieuw wachtwoord (minimaal 12 tekens)</label><input name="password" type="password" autocomplete="new-password" minlength="12" required></div>'+
+'<div class="field"><label>Herhaal wachtwoord</label><input name="confirm_password" type="password" autocomplete="new-password" minlength="12" required></div>'+
+'<button class="primary" type="submit">Wachtwoord bijwerken</button></form>');
 }
 async function boot(){
  S.day=now();
@@ -49,8 +73,8 @@ async function boot(){
  catch(e){loginForm(errText(e));}
 }
 async function authorize(user){
- const {data,error}=await S.sb.rpc("jar_admin_is_admin");
- if(error||data!==true){loginForm("Dit account heeft geen Admin-rechten. Log in met je bestaande beheerder.");return;}
+ const {data,error}=await S.sb.rpc("glass_planner_can_access");
+ if(error||data!==true){await S.sb.auth.signOut();loginForm("Dit account heeft nog geen toegang tot de planner of het e-mailadres is nog niet bevestigd.");return;}
  S.user=user;$("auth").classList.add("hidden");$("shell").classList.remove("hidden");await load();
 }
 async function fetchAll(table,by){
@@ -267,6 +291,9 @@ async function action(el){
  const op=el.dataset.action,id=el.dataset.id;
  if(op==="close-modal"){$("modal-root").replaceChildren();return;}
  if(op==="change-config"){configForm();return;}
+ if(op==="show-signup"){signupForm();return;}
+ if(op==="show-forgot"){forgotForm();return;}
+ if(op==="show-login"){loginForm();return;}
  if(op==="new-client"){clientModal();return;}
  if(op==="edit-client"){clientModal(id);return;}
  if(op==="new-visit"){visitModal(null,null);return;}
@@ -299,7 +326,7 @@ document.addEventListener("input",e=>{
 });
 document.addEventListener("change",e=>{if(e.target.id==="status-filter"){S.status=e.target.value;render();}});
 document.addEventListener("submit",async e=>{
- if(!["setup-form","login-form","client-form","visit-form"].includes(e.target.id))return;
+ if(!["setup-form","login-form","signup-form","forgot-form","recovery-form","client-form","visit-form"].includes(e.target.id))return;
  e.preventDefault();if(S.busy)return;
  const f=e.target,btn=f.querySelector('button[type="submit"]');S.busy=true;if(btn)btn.disabled=true;
  try{
@@ -313,9 +340,37 @@ document.addEventListener("submit",async e=>{
  const data=new FormData(f),{error,data:auth}=await S.sb.auth.signInWithPassword({email:String(data.get("email")||"").trim(),password:String(data.get("password")||"")});
  if(error)throw error;await authorize(auth.user);return;
  }
+ if(f.id==="signup-form"){
+ if(!S.sb)throw Error("Verbinding ontbreekt. Herlaad de pagina.");
+ const data=new FormData(f),email=String(data.get("email")||"").trim(),password=String(data.get("password")||"");
+ if(password.length<12 || password!==String(data.get("confirm_password")||""))throw Error("Kies minstens 12 tekens en vul hetzelfde wachtwoord twee keer in.");
+ const {data:response,error}=await S.sb.auth.signUp({email,password});
+ if(error)throw error;
+ if(response?.session)await S.sb.auth.signOut();
+ loginForm("Registratie aangevraagd. Bevestig je e-mailadres met de ontvangen mail en log daarna opnieuw in.");
+ return;
+ }
+ if(f.id==="forgot-form"){
+ if(!S.sb)throw Error("Verbinding ontbreekt. Herlaad de pagina.");
+ const email=String(new FormData(f).get("email")||"").trim();
+ const {error}=await S.sb.auth.resetPasswordForEmail(email,{redirectTo:window.location.origin+window.location.pathname});
+ if(error)throw error;
+ loginForm("Als het account bestaat, krijg je een herstelmail. Controleer ook de spammap.");
+ return;
+ }
+ if(f.id==="recovery-form"){
+ if(!S.sb)throw Error("Verbinding ontbreekt. Herlaad de pagina.");
+ const data=new FormData(f),password=String(data.get("password")||"");
+ if(password.length<12||password!==String(data.get("confirm_password")||""))throw Error("Gebruik minstens 12 tekens en vul hetzelfde wachtwoord twee keer in.");
+ const {error}=await S.sb.auth.updateUser({password});
+ if(error)throw error;
+ await S.sb.auth.signOut();
+ loginForm("Je wachtwoord is gewijzigd. Log opnieuw in.");
+ return;
+ }
  if(f.id==="client-form")await saveClient(f);
  if(f.id==="visit-form")await saveVisit(f);
- }catch(e){const inline=$("form-error");if(inline)inline.textContent=errText(e);else if(f.id==="login-form")loginForm(errText(e));else if(f.id==="setup-form")configForm(errText(e));else message(errText(e),true);}
+ }catch(e){const inline=$("form-error");if(inline)inline.textContent=errText(e);else if(f.id==="login-form")loginForm(errText(e));else if(f.id==="signup-form")signupForm(errText(e));else if(f.id==="forgot-form")forgotForm(errText(e));else if(f.id==="recovery-form")recoveryForm(errText(e));else if(f.id==="setup-form")configForm(errText(e));else message(errText(e),true);}
  finally{S.busy=false;if(btn)btn.disabled=false;}
 });
 $("logout").addEventListener("click",async()=>{if(!confirm("Uitloggen bij de planner?"))return;await S.sb?.auth.signOut();S.user=null;S.clients=[];S.visits=[];loginForm();});
