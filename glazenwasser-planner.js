@@ -24,7 +24,7 @@ const payPill=v=>'<span class="pill '+x(v)+'">'+x(payLabels[v]||v)+'</span>';
 function message(text,isError=false){const target=$("toast");target.innerHTML='<div class="toast-msg'+(isError?' error':'')+'">'+x(text)+'</div>';clearTimeout(message.timer);message.timer=setTimeout(()=>target.replaceChildren(),4900);}
 function setAuth(html){$("auth").classList.remove("hidden");$("shell").classList.add("hidden");$("auth-content").innerHTML=html;}
 function errText(e){if(!e)return "Onbekende fout";if(e.code==="23505")return "Voor deze klant bestaat op die datum al een bezoek.";return e.message||String(e);}
-function storageConfig(){try{return JSON.parse(localStorage.getItem("jar_admin_config_v1")||"null");}catch{return null;}}
+function storageConfig(){try{const v=JSON.parse(localStorage.getItem("jar_admin_config_v1")||"null");if(v?.url&&v?.key)return v;}catch{}return {url:"https://fqupzovqwzaqkatcfbka.supabase.co",key:"sb_publishable_ahp4b1jbybZmcQDDkkdNrg_IvbVXZsY"};}
 function configForm(note=""){
 setAuth((note?'<div class="auth-error">'+x(note)+'</div>':"")+
 '<form id="setup-form"><div class="field"><label>Supabase project-URL</label><input name="url" type="url" placeholder="https://project.supabase.co" required></div>'+
